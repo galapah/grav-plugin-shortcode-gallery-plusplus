@@ -10,6 +10,8 @@ It combines [Justified-Gallery](https://github.com/miromannino/Justified-Gallery
 
 It's quite simple. Just wrap some image links in `[gallery]` tags:
 
+### With one markdown tag per image
+
 ```markdown
 [gallery]
 ![Alt text 1](image.jpg "Some description to be used in the lightbox")
@@ -19,6 +21,36 @@ It's quite simple. Just wrap some image links in `[gallery]` tags:
 ...
 [/gallery]
 ```
+
+### With one CSV file
+
+Alternatively, you can specify the images with one CSV file containing information about the pictures, e.g.:
+
+```markdown
+[gallery]
+source="pics/pic_list.csv"
+[/gallery]
+```
+
+#### Sample CSV file
+
+```
+filename;description;title
+image1.jpg;"picture from vacation";"my vacation"
+image2.jpg;"me and my friends";"with friends"
+```
+
+#### Requirements
+
+1. the definition string startswith "source="
+2. the file extension is CSV
+3. the definition is case insensitive
+4. the CSV file must be in the same directory as the pictures
+5. the CSV file contains at least two columns: image filename and description as the 'alt' title
+6. if there is a third column, it is used for the 'title' property, otherwise 'title'='alt'
+7. the first column is file basename, without directory
+8. the first row is ignored as a header
+9. the field delimiter can be comma or semicolon
 
 ## Okay, what does it look like?
 

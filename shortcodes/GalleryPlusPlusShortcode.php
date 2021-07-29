@@ -4,9 +4,86 @@ namespace Grav\Plugin\Shortcodes;
 
 use Thunder\Shortcode\Shortcode\ShortcodeInterface;
 
+// define the str_starts_with() function if the PHP version < 8,
+$php_version_main = intval(substr(phpversion(), 0, 1));
+
+if ($php_version_main < 8) {
+    function str_starts_with($string, $startString)
+    {
+        /* Checks if a string starts with a given substring */
+        $len = strlen($startString);
+        return (substr($string, 0, $len) === $startString);
+    }
+}
+
 class GalleryPlusPlusShortcode extends Shortcode
 {
 
+    private function getImageArrayFromCSV($filepath)
+    {
+        $folder = dirname($filepath);
+
+        $images_final = [];
+        $handle = fopen($filepath, "r");
+
+		for ($i = 0; $row = fgetcsv($handle); ++$i) {
+		    if ($i > 0) { // ignore header row
+                $src = $folder . "/" . $row[0];
+                $image = "<img src='" . $src . "' alt='" . $row[1] . "' />";
+                array_push($images_final, [
+                    "image" => $image,
+                    "src" => $src,
+                    "alt" => $row[1],
+                    // if there is no 'title' field or if it is empty, use the 'alt' field
+                    "title" => (count($row) < 3 || trim($row[2]) == "") ? $row[1] : $row[2],
+                ]);
+		    }
+		}
+		fclose($handle);
+
+		return $images_final;
+    }
+
+    private function getImageArrayFromHTMLtags($content)
+    {
+            // split up images to arrays of img links
+            preg_match_all('|<img.*?>|', $content, $images);
+
+            $images_final = [];
+            foreach ($images[0] as $image) {
+                // get src attribute
+                preg_match('|src="(.*?)"|', $image, $links);
+
+                // get alt attribute
+                preg_match('|alt="(.*?)"|', $image, $alts);
+
+                // get title attribute - and strip html from it
+                // e.g.:    "<strong>Title 1</strong><br />Example 1<br/>More description<br>Bla bla"
+                // becomes: "Title 1 | Example 1 | More description | Bla bla"
+                preg_match('/title="(.*?)"/', $image, $titles);
+                if (!empty($titles)) {
+                    // replace br tags with " | "
+                    $title_clean = preg_replace('/<br *\/*>/', ' | ', html_entity_decode($titles[1]));
+                    // strip html
+                    $title_clean = strip_tags(html_entity_decode($title_clean));
+                    // set as new title
+                    $image = preg_replace('/title=".*?"/', "title=\"$title_clean\"", $image);
+                } else {
+                    $titles[1] = null;
+                }
+
+                // combine
+                array_push($images_final, [
+                    // full
+                    "image" => $image,
+                    "src" => $links[1],
+                    "alt" => $alts[1],
+                    "title" => $titles[1],
+                ]);
+            }
+
+            return $images_final;
+    }
     /*
      *
      */
@@ -43,6 +120,9 @@ class GalleryPlusPlusShortcode extends Shortcode
 
             // find all images, that a gallery contains
             $content = $shortcode->getContent();
+            // remove <p> tags
+            $content = preg_replace('(<p>|</p>)', '', $content);
+            $content = trim($content);
 
             // check validity
             if (strpos($content, "<pre>") !== false)
@@ -50,42 +130,20 @@ class GalleryPlusPlusShortcode extends Shortcode
                         &gt; Images provided got parsed as code block.<br>
                         &gt; Please check your markdown file and make sure the images aren't indented by tab or more than three spaces.</p>";
 
-            // remove <p> tags
-            $content = preg_replace('(<p>|</p>)', '', $content);
-            // split up images to arrays of img links
-            preg_match_all('|<img.*?>|', $content, $images);
+            // check if the content is defined by a CSV file
+            // TODO define the function if PHP < 8
+            if (str_starts_with($content, "source=")) {
+                if (preg_match("/source=['\"]*(.*\\.csv)['\"]*/i", $content, $matches) == 1) {
+                    $page = $this->grav['page'];
+                    $folder = dirname($page -> filePathClean());
 
-            $images_final = [];
-            foreach ($images[0] as $image) {
-                // get src attribute
-                preg_match('|src="(.*?)"|', $image, $links);
-
-                // get alt attribute
-                preg_match('|alt="(.*?)"|', $image, $alts);
-
-                // get title attribute - and strip html from it
-                // e.g.:    "<strong>Title 1</strong><br />Example 1<br/>More description<br>Bla bla"
-                // becomes: "Title 1 | Example 1 | More description | Bla bla"
-                preg_match('/title="(.*?)"/', $image, $titles);
-                if (!empty($titles)) {
-                    // replace br tags with " | "
-                    $title_clean = preg_replace('/<br *\/*>/', ' | ', html_entity_decode($titles[1]));
-                    // strip html
-                    $title_clean = strip_tags(html_entity_decode($title_clean));
-                    // set as new title
-                    $image = preg_replace('/title=".*?"/', "title=\"$title_clean\"", $image);
+                    $filepath = $folder . "/" . $matches[1];
+                    $images_final = $this->getImageArrayFromCSV($filepath);
                 } else {
-                    $titles[1] = null;
+                    // TODO
                 }
-
-                // combine
-                array_push($images_final, [
-                    // full
-                    "image" => $image,
-                    "src" => $links[1],
-                    "alt" => $alts[1],
-                    "title" => $titles[1],
-                    ]);
+            } else {
+                $images_final = $this->getImageArrayFromHTMLtags($content);
             }
 
             return $this->twig->processTemplate('partials/gallery-plusplus.html.twig', [
